@@ -1,58 +1,62 @@
-### 项目简介
+# Qwen3-0.6-MS
 
-Qwen3-0.6-MS 是一个基于 Qwen/Qwen3-0.6B 的中文角色扮演问答（明兰）微调与推理示例项目，包含：
+**English** | [中文](README_cn.md)
 
-- 数据处理与全参数微调脚本：`train.py`
-- 基于 LoRA 的高效微调脚本：`train_lora.py`
-- Flask 推理与可视化 Web 应用：`app.py`（记录健康数据、生成建议与报告）
+### Project Overview
 
-### 环境要求
+Qwen3-0.6-MS is a Chinese role-play QA (Minglan) fine-tuning and inference example project based on Qwen/Qwen3-0.6B, including:
 
-- 操作系统：Linux / Windows / macOS
+- Data processing and full-parameter fine-tuning script: `train.py`
+- LoRA-based efficient fine-tuning script: `train_lora.py`
+- Flask multi-turn chat Web app: `app.py` (chat with Minglan in the browser, with history and clear)
+
+### Requirements
+
+- OS: Linux / Windows / macOS
 - Python ≥ 3.10
-- GPU（推荐，支持 CUDA），或 CPU（训练会很慢）
+- GPU (recommended, CUDA-capable), or CPU (training will be very slow)
 
-安装依赖：
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-依赖主要包含：`torch`, `transformers`, `modelscope`, `peft`, `pandas`。
+Main dependencies: `torch`, `transformers`, `modelscope`, `peft`, `pandas`.
 
-训练脚本额外依赖 `datasets`（requirements.txt 未包含，需单独安装）：
+Training scripts additionally need `datasets` (not included in requirements.txt, install separately):
 
 ```bash
 pip install datasets
 ```
 
-Web 应用额外依赖（代码会用到，建议安装）：
+The Web app additionally needs (recommended):
 
 ```bash
-pip install flask matplotlib
+pip install flask
 ```
 
-### 目录结构（关键文件）
+### Directory Structure (key files)
 
-- `train.py`：全参数微调（保存至 `./output/final_model`）
-- `train_lora.py`：LoRA 微调（保存至 `./output_lora/final_model`）
-- `app.py`：加载基础模型 + LoRA 适配器，提供 Web 推理
-- `templates/`：网页模板（`index.html`, `report.html`）
-- `data/minglan_qa_clean.json`：训练数据（JSON 数组，共 1154 条，每条含 `问题`、`明兰` 字段）
-- `data/minglan_qa_clean.csv`：同内容的 CSV 源文件（训练实际读取 JSON）
-- `model/`：基础模型缓存目录（首次运行时由 ModelScope 自动下载）
-- 运行训练后还会生成：`train.json` / `eval.json`（切分数据）、`train_format.json` / `eval_format.json`（指令格式）、`./processed_train_dataset` / `./processed_eval_dataset`（tokenize 缓存）、`./output/` / `./output_lora/`（训练输出）
+- `train.py`: full-parameter fine-tuning (saves to `./output/final_model`)
+- `train_lora.py`: LoRA fine-tuning (saves to `./output_lora/final_model`)
+- `app.py`: loads base model + LoRA adapter, provides Web inference
+- `templates/`: Web templates (`index.html`)
+- `data/minglan_qa_clean.json`: training data (JSON array, 1154 items, each with `问题` and `明兰` fields)
+- `data/minglan_qa_clean.csv`: same content as CSV source (training reads the JSON)
+- `model/`: base model cache directory (auto-downloaded from ModelScope on first run)
+- After training: `train.json` / `eval.json` (split data), `train_format.json` / `eval_format.json` (instruction format), `./processed_train_dataset` / `./processed_eval_dataset` (tokenize cache), `./output/` / `./output_lora/` (training outputs)
 
-### 数据集说明
+### Dataset
 
-训练脚本从本地文件 `data/minglan_qa_clean.json` 加载数据（共 1154 条），固定随机种子（`random.seed(50)`）打乱后按 9:1 切分训练/验证集，并转换为指令对格式：
+The training scripts load data from `data/minglan_qa_clean.json` (1154 items), shuffle with a fixed random seed (`random.seed(50)`), split 9:1 into train/validation, and convert to instruction pairs:
 
 ```python
 with open(data_file, 'r', encoding='utf-8') as f:
     ds = json.load(f)
 ```
 
-字段映射（在 `dataset_jsonl_transfer` 中）：
+Field mapping (in `dataset_jsonl_transfer`):
 
 ```python
 {
@@ -62,106 +66,104 @@ with open(data_file, 'r', encoding='utf-8') as f:
 }
 ```
 
-如需替换数据集：准备一个含 `问题`/`明兰` 两个字段的 JSON 数组文件，并修改 `train.py` / `train_lora.py` 中的 `data_file` 路径与字段名。
+To replace the dataset: prepare a JSON array file with `问题` / `明兰` fields, and modify `data_file` and the field names in `train.py` / `train_lora.py`.
 
-### 微调流程
+### Fine-tuning Workflow
 
-#### A. 全参数微调（train.py）
+#### A. Full-parameter fine-tuning (train.py)
 
-1. 执行命令：
+1. Run:
 
 ```bash
 python train.py
 ```
 
-2. 主要流程：
+2. Main flow:
 
-- 自动下载基础模型 `Qwen/Qwen3-0.6B` 至 `./model/` 缓存
-- 将原始数据转为指令输出格式并 Tokenize 到 `MAX_LENGTH=4096`
-- 使用 `Trainer` 训练
-- 训练完成自动保存至：`./output/final_model`
+- Auto-downloads base model `Qwen/Qwen3-0.6B` to `./model/` cache
+- Converts raw data to instruction format and tokenizes to `MAX_LENGTH=4096`
+- Trains with `Trainer`
+- Saves automatically to `./output/final_model`
 
-3. 关键超参（可在脚本内修改）：
+3. Key hyperparameters (editable in the script):
 
-- 学习率：`5e-5`
-- batch：`per_device_train_batch_size=1`，`gradient_accumulation_steps=4`
-- epoch：`num_train_epochs=1`（示例值）
-- 评估/保存步长：`eval_steps=100`，`save_steps=400`
+- Learning rate: `5e-5`
+- Batch: `per_device_train_batch_size=1`, `gradient_accumulation_steps=4`
+- Epoch: `num_train_epochs=1` (example value)
+- Eval/save steps: `eval_steps=100`, `save_steps=400`
 
-#### B. LoRA 微调（train\_lora.py）
+#### B. LoRA fine-tuning (train_lora.py)
 
-1. 执行命令：
+1. Run:
 
 ```bash
 python train_lora.py
 ```
 
-2. 主要流程：
+2. Main flow:
 
-- 同样下载并加载 `Qwen/Qwen3-0.6B`
-- 注入 LoRA：
+- Same download and loading of `Qwen/Qwen3-0.6B`
+- Injects LoRA:
   - `target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"]`
   - `r=8, lora_alpha=32, lora_dropout=0.1`
-- 使用 `Trainer` 训练 LoRA 适配器
-- 训练完成保存到：`./output_lora/final_model`
-- 评估/保存步长：`eval_steps=100`，`save_steps=100`
+- Trains the LoRA adapter with `Trainer`
+- Saves to `./output_lora/final_model`
+- Eval/save steps: `eval_steps=100`, `save_steps=100`
 
-3. 推理时通过 `PeftModel.from_pretrained` 在基础模型上加载 LoRA 适配器（见下一节）。
+3. At inference, the adapter is loaded onto the base model via `PeftModel.from_pretrained` (see next section).
 
-### 推理与 Web 应用
+### Inference & Web App
 
-`app.py` 提供一个简单的健康数据记录与建议生成网页。
+`app.py` provides a browser chat application for talking with Minglan (multi-turn).
 
-启动前请先运行 `python train_lora.py` 生成 `./output_lora/final_model`，否则启动时会提示“模型加载失败”，无法生成建议与报告。
+Run `python train_lora.py` first to generate `./output_lora/final_model`, otherwise startup reports "模型加载失败" (model load failure) and cannot reply.
 
-1. 路径配置：
-   在 `app.py` 的 `load_model()` 中，默认路径已与训练脚本对齐：
+1. Path configuration:
+   In `app.py`'s `load_model()`, default paths are aligned with the training scripts:
 
 ```python
-model_path = "./model/Qwen/Qwen3-0.6B"       # 按实际缓存目录调整
-lora_path = "./output_lora/final_model"      # 与 train_lora.py 对齐
+model_path = "./model/Qwen/Qwen3-0.6B"       # adjust to your actual cache directory
+lora_path = "./output_lora/final_model"      # aligned with train_lora.py
 ```
 
-2. 运行 Web：
+2. Run the Web app:
 
 ```bash
 python app.py
 ```
 
-浏览器访问 `http://127.0.0.1:5000/`。
+Visit `http://127.0.0.1:5000/` in a browser.
 
-3. 功能说明：
+3. Features:
 
-- 首页添加健康记录（日期/性别/身高/体重/血压）
-- 写入 SQLite 本地库 `health_data.db`
-- 基于模型生成个性化建议（含 BMI/血压评估等）
-- 展示近 10 条记录的趋势图（`matplotlib`，默认中文字体配置）
-- 一键生成综合报告（基于历史趋势 + 最新数据）
+- Chat page for multi-turn conversation with Minglan (Enter to send, full history kept)
+- `/chat` API returns Minglan's reply, `/clear` resets the history
+- Model load status shown at the top
+- Page copy and system prompt both follow the *Zhifou* Minglan character
 
-4. 推理细节：
+4. Inference details:
 
-- 使用 `tokenizer.apply_chat_template` 生成对话输入（`enable_thinking=False`，关闭 Qwen3 思考模式）
-- system prompt 与训练一致：`你是盛明兰，以明兰的口吻和性格回答问题`
-- 生成参数：建议生成 `max_new_tokens=400, temperature=0.7, do_sample=True`；综合报告 `max_new_tokens=2048`
-- 通过 `PeftModel.from_pretrained` 加载 LoRA 适配器
+- Uses `tokenizer.apply_chat_template` to build the conversation input (`enable_thinking=False`, disabling Qwen3 thinking mode)
+- System prompt identical to training: `你是盛明兰，以明兰的口吻和性格回答问题`
+- Generation parameters: `max_new_tokens=400, temperature=0.7, top_p=0.9, do_sample=True`; only newly generated tokens are decoded
+- LoRA adapter loaded via `PeftModel.from_pretrained`
 
-### 常见问题
+### FAQ
 
-- 模型或 LoRA 路径不匹配：请根据本地实际下载/保存路径调整 `app.py` 中的 `model_path`/`lora_path`。注意不同 ModelScope 版本缓存目录名可能不同（新版为 `./model/Qwen/Qwen3-0.6B`，旧版可能为 `./model/Qwen/Qwen3-0___6B`）。
-- 启动 `app.py` 提示“模型加载失败”：通常是尚未训练 LoRA（缺少 `./output_lora/final_model`）或路径不对，先运行 `python train_lora.py` 并检查 `model_path`/`lora_path`。
-- 字体/中文显示异常：`matplotlib` 已加入常用中文字体名称，必要时在本机安装相应字体。
-- 无 GPU：可在 CPU 上运行推理，但速度较慢；训练强烈建议使用 GPU。
-- 数据处理缓存：脚本会将 tokenize 后的数据缓存到 `./processed_train_dataset`、`./processed_eval_dataset`；若更换了数据集或字段，请删除这两个缓存目录后重新运行（`train_format.json`、`eval_format.json` 会自动重新生成）。
+- Model or LoRA path mismatch: adjust `model_path`/`lora_path` in `app.py` to your actual download/save paths. Note that different ModelScope versions use different cache directory names (new: `./model/Qwen/Qwen3-0.6B`, old: `./model/Qwen/Qwen3-0___6B`).
+- `app.py` reports "模型加载失败": usually the LoRA hasn't been trained (missing `./output_lora/final_model`) or paths are wrong — run `python train_lora.py` first and check `model_path`/`lora_path`.
+- No GPU: inference works on CPU but is slow; training strongly requires a GPU.
+- Data processing cache: tokenized data is cached in `./processed_train_dataset` and `./processed_eval_dataset`; if you change the dataset or fields, delete these two cache directories and rerun (`train_format.json` / `eval_format.json` regenerate automatically).
 
-### 拓展
+### Extensions
 
-#### 1. 如何使用合并后的模型
+#### 1. How to use the merged (full fine-tuned) model
 
-你当前保存的 `./output/final_model` 是完整的模型权重（因为是全量微调，不是 LoRA）。
-如果你想把它导出成可以直接用 vLLM 或 transformers 推理的标准模型，直接运行：
+`./output/final_model` currently holds the complete model weights (because this is full-parameter fine-tuning, not LoRA).
+To export it as a standard model directly usable with vLLM or transformers inference, simply run:
 
 ```python
-# 加载并保存即可
+# Load and save is all you need
 from transformers import AutoModelForCausalLM, AutoTokenizer
 model = AutoModelForCausalLM.from_pretrained("./output/final_model")
 tokenizer = AutoTokenizer.from_pretrained("./output/final_model")
@@ -169,21 +171,96 @@ model.save_pretrained("./exported_model")
 tokenizer.save_pretrained("./exported_model")
 ```
 
-#### 2. 关于 0.6B 模型的局限性（心理预期）
+#### 2. Limitations of the 0.6B model (manage expectations)
 
-虽然模型现在的语气很对了，但你可能也注意到了，面对长段的背景描述（第一个问题），它只回了一句"侯爷可真是见到了真金不怕火炼啊！"，这说明 0.6B 模型的上下文理解能力极弱。它现在像是一个"只会背台词的演员"。如果未来的业务需要模型进行复杂的推理或长段对话，建议换成 Qwen2.5-7B-Instruct。你当前的这套代码结构（包括格式对齐、防炸参数、推理逻辑）可以直接无缝平移到 7B 模型上，效果会直接起飞。
+The model's tone is right now, but as you may have noticed, given a long background description (the first question), it only replied "侯爷可真是见到了真金不怕火炼啊！" — this shows the 0.6B model's context understanding is very weak. It is like "an actor who only memorizes lines." If future business requires complex reasoning or long multi-turn conversations, consider switching to Qwen2.5-7B-Instruct. Your current code structure (format alignment, anti-crash parameters, inference logic) can migrate seamlessly to the 7B model, and the results will take off.
 
-#### 3. 记录你的训练成果
+#### 3. Record your training milestones
 
-你现在可以把这次跑通的参数记录下来，这是你在这个项目里的重大里程碑：
+You can now record the parameters that worked — this is a major milestone for this project:
 
-- 模型：Qwen3-0.6B
-- 微调方式：全量微调（Full Fine-tuning）
-- 防炸三板斧：FP32 加载 + lr=1e-5 + max_grad_norm=1.0
-- 数据格式：apply_chat_template + EOS（结束符）
-- 硬件：单卡 RTX 3090，约耗时 3.8 分钟/3 epochs
+- Model: Qwen3-0.6B
+- Fine-tuning method: Full Fine-tuning
+- Anti-crash trio: FP32 loading + lr=1e-5 + max_grad_norm=1.0
+- Data format: apply_chat_template + EOS (end-of-sequence token)
+- Hardware: single RTX 3090, about 3.8 minutes / 3 epochs
 
-### 许可与声明
+#### 4. Three typical problems and their root causes
 
-- 本项目仅供学习与研究使用，生成内容不构成医疗建议，若有健康问题请咨询专业医生。
-- 请遵循上游模型（Qwen）与数据来源的许可协议。
+**(1) Becoming a "repeater" in an infinite loop**
+
+Symptom: the model outputs "北疆的兵种都齐了" a dozen times, or endlessly repeats the user's question.
+
+Root causes:
+- Wrong inference parameters: using `max_length=2048` (which counts the input) leaves too little room for generation and forces truncation; `repetition_penalty` is missing.
+- Missing EOS token: the training data concatenated the answer without `tokenizer.eos_token_id`, so the model never learns when to stop.
+- Prompt format mismatch: hand-written `<|im_start|>` strings during training vs. the official `apply_chat_template` during inference — tiny differences crash a small model.
+
+**(2) Gradient explosion during full fine-tuning (Loss becomes NaN)**
+
+Symptom: `grad_norm: nan` in the logs, followed by `loss: 0.0`, and finally `CUDA error: device-side assert triggered` at inference.
+
+Root causes:
+- Learning rate too high: for full-parameter updates on a 0.6B model, `5e-5` or `1e-4` is too aggressive and causes explosion.
+- Precision overflow: fp16 mixed precision on a 3090 — extremes of a small model easily exceed the FP16 range (max 65504) and become inf/nan.
+- No gradient clipping: without `max_grad_norm=1.0`, abnormal gradients destroy the weights.
+- Dirty data: empty answers or extremely long garbled text produce huge instantaneous losses.
+
+**(3) Dried-up answers (like a soulless machine)**
+
+Symptom: you send a long paragraph, and the model replies with one sentence like "那可真是难办啊！".
+
+Root causes:
+- Not enough diversity at inference: `temperature=0.3` is too conservative and `repetition_penalty=1.1` over-penalizes.
+- Training data itself is short: if your qa.csv answers are all short, the model never learns long sentences.
+- Weak System Prompt: you never explicitly required it to "say more".
+
+#### 5. Lessons learned after the pitfalls
+
+- Beware "format mismatches": for small models (like 0.6B), tolerance is extremely low. Training-time data concatenation must match inference exactly — always use the official `tokenizer.apply_chat_template()`.
+- The "gradient checkpointing" trap: `gradient_checkpointing=True` saves memory but easily breaks requires_grad flow. For a tiny model like 0.6B, turn it off (set to False) for ~30% faster training and higher stability.
+- Don't let caches fool you: after changing `process_fun` or the Prompt format, always delete the old `processed_dataset` cache folders, otherwise the framework silently reads stale data.
+- Full fine-tuning is far more fragile than LoRA: LoRA only touches a few parameters and is more robust; full fine-tuning exposes every parameter to gradients, so tread carefully.
+
+#### 6. Hyperparameter SOP ("stay rock-solid" recipe)
+
+**Anti-NaN trio**
+- Precision: if the GPU supports it (3090/4090/A100), prefer `bf16=True, fp16=False`. bf16 has a huge dynamic range and almost never overflows. Otherwise train in `torch.float32` (if memory allows) — absolutely safe.
+- Learning rate: start at `1e-5` or `2e-5` for full fine-tuning; `1e-4` or `2e-4` for LoRA. When in doubt, go lower.
+- Gradient clipping: always add `max_grad_norm=1.0` — the fuse that saves you.
+
+**Three locks against the "repeater"**
+- Training: append `[tokenizer.eos_token_id]` to the end of labels.
+- Inference: never use `max_length`; use `max_new_tokens=256`.
+- Sampling: add `repetition_penalty=1.1` together with `no_repeat_ngram_size=3`.
+
+**Two tricks to make answers "fuller"**
+- Prompt constraint: hard-code in the System Prompt: "Please answer in detail in the voice of XX, at least 50 characters."
+- Open up inference: if it sounds too stiff, raise temperature to `0.6–0.7` and top_p to `0.85–0.9` for more "human warmth".
+- Data sets the ceiling: the model is a parrot. Over 30% of your dataset should be long-paragraph answers, otherwise it will only ever produce one-liners.
+
+**Golden config for VRAM & speed (single RTX 3090 24GB)**
+
+```python
+# Golden parameter template
+args = TrainingArguments(
+    per_device_train_batch_size=4,   # 4 for full FT, 8 for LoRA
+    gradient_accumulation_steps=2,   # accumulate to an equivalent batch
+    num_train_epochs=3,              # 3 epochs is enough for ~1000 samples
+    learning_rate=1e-5,              # full FT, anti-explosion
+    lr_scheduler_type="cosine",      # cosine annealing for smooth convergence
+    warmup_ratio=0.05,               # 5% warmup steps
+    max_grad_norm=1.0,               # gradient clipping — the lifeline
+    bf16=True,                       # must-enable on 3090
+    gradient_checkpointing=False,    # off for small models, on for large ones
+)
+```
+
+#### 7. Final thoughts
+
+Model fine-tuning is not only a science but also a blend of "dark art" and engineering. Taking a 0.6B model from "gibberish" to the "Zhifou style" means hitting nearly every beginner pitfall at least once. With these lessons — Loss monitoring, NaN debugging, data-format alignment, inference constraints — the same underlying logic applies when you move on to 7B, 14B, or even 72B models.
+
+### License & Disclaimer
+
+- This project is for learning and research only; generated Minglan role-play content is for entertainment purposes only and is not affiliated with the original TV drama *The Story of Minglan*.
+- Please follow the licenses of the upstream model (Qwen) and data sources.
